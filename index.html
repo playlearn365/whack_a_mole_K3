@@ -117,6 +117,7 @@
   <div id="strack">已配對：<span id="hcnt">0</span> / 4</div>
   <div id="toast"></div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <script>
 const FRUITS=['🍎','🍊','🍋','🍇','🍓','🍑','🍒','🍍'];
 const HOLES=9,PAIRS=4,SPEED=3400;
@@ -153,35 +154,52 @@ function genCounts(target){
   return counts;
 }
 
-let AC;
-try{AC=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}
-function unlockAC(){if(AC&&AC.state==='suspended')AC.resume();}
-document.addEventListener('touchstart',unlockAC,{once:true});
-document.addEventListener('mousedown',unlockAC,{once:true});
+let toneReady=false;
+let synth,marimba,noiseSynth;
+
+async function initTone(){
+  if(toneReady)return;
+  await Tone.start();
+  marimba=new Tone.Synth({
+    oscillator:{type:'triangle'},
+    envelope:{attack:0.001,decay:0.3,sustain:0,release:0.1},
+    volume:-6
+  }).toDestination();
+  synth=new Tone.PolySynth(Tone.Synth,{
+    oscillator:{type:'sine'},
+    envelope:{attack:0.01,decay:0.4,sustain:0.1,release:0.5},
+    volume:-8
+  }).toDestination();
+  noiseSynth=new Tone.Synth({
+    oscillator:{type:'sawtooth'},
+    envelope:{attack:0.001,decay:0.2,sustain:0,release:0.05},
+    volume:-10
+  }).toDestination();
+  toneReady=true;
+}
+
+document.addEventListener('touchstart',initTone,{once:true});
+document.addEventListener('mousedown',initTone,{once:true});
 
 function beep(type){
-  if(!AC)return;
+  if(!toneReady)return;
   try{
-    if(type==='ok'){
-      const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.type='sine';
-      o.frequency.setValueAtTime(520,AC.currentTime);o.frequency.setValueAtTime(780,AC.currentTime+0.08);
-      g.gain.setValueAtTime(0.35,AC.currentTime);g.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.35);
-      o.start();o.stop(AC.currentTime+0.35);
-    }else if(type==='bad'){
-      const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.type='sawtooth';
-      o.frequency.setValueAtTime(220,AC.currentTime);o.frequency.setValueAtTime(150,AC.currentTime+0.1);
-      g.gain.setValueAtTime(0.3,AC.currentTime);g.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.3);
-      o.start();o.stop(AC.currentTime+0.3);
-    }else if(type==='win'){
-      [520,660,780,1040].forEach((f,i)=>{
-        const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.type='sine';o.frequency.value=f;
-        const t=AC.currentTime+i*0.1;g.gain.setValueAtTime(0.3,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.25);o.start(t);o.stop(t+0.25);
-      });
-    }else if(type==='fail'){
-      [300,250,200].forEach((f,i)=>{
-        const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.type='sawtooth';o.frequency.value=f;
-        const t=AC.currentTime+i*0.12;g.gain.setValueAtTime(0.25,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.2);o.start(t);o.stop(t+0.2);
-      });
+    const now=Tone.now();
+    if(type==='tap'){
+      marimba.triggerAttackRelease('G4',0.12,now);
+    } else if(type==='ok'){
+      marimba.triggerAttackRelease('C5',0.15,now);
+      marimba.triggerAttackRelease('E5',0.15,now+0.15);
+    } else if(type==='bad'){
+      noiseSynth.triggerAttackRelease('C3',0.2,now);
+      noiseSynth.triggerAttackRelease('A2',0.2,now+0.15);
+    } else if(type==='win'){
+      const melody=[['C5',0],['E5',0.18],['G5',0.36],['C6',0.54]];
+      melody.forEach(([n,t])=>synth.triggerAttackRelease(n,0.35,now+t));
+    } else if(type==='fail'){
+      noiseSynth.triggerAttackRelease('G3',0.18,now);
+      noiseSynth.triggerAttackRelease('E3',0.18,now+0.15);
+      noiseSynth.triggerAttackRelease('C3',0.25,now+0.30);
     }
   }catch(e){}
 }
@@ -289,6 +307,7 @@ function tap(i){
     hs[i].locked=true;
     clearTimeout(hs[i].timer);
     hs[i].holeEl.classList.add('selected');
+    beep('tap');
     document.getElementById('select-hint').textContent='已選 '+hs[i].count+' 個，再點一個配對！';
   } else {
     const a=hs[selectedIdx].count,b=hs[i].count;
